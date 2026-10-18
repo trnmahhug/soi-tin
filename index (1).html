@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Soi tin: kiểm tra tin trước khi chia sẻ</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;800&display=swap" rel="stylesheet">
+  <style>
+    /* CSS: phần làm đẹp cho trang */
+    :root { --paper:#f3f6f7; --ink:#13262b; --teal:#0b7a85; --line:#c9d6d9; --ok:#1f8a4c; --warn:#a56f00; --bad:#c9372c; }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font-family:"Be Vietnam Pro","Segoe UI",Roboto,Arial,sans-serif; line-height:1.6; }
+    main { max-width:760px; margin:0 auto; padding:48px 20px 80px; }
+    h1 { margin:0 0 8px; font-size:clamp(2.2rem,7vw,3.4rem); font-weight:800; line-height:1.1; }
+    h2 { margin:56px 0 16px; padding-top:14px; border-top:3px solid var(--ink); font-size:1.4rem; font-weight:800; }
+    .lead { margin:0; font-size:1.1rem; }
+    .small { margin:8px 0; font-size:.9rem; }
+    textarea { width:100%; min-height:130px; padding:12px; border:1.5px solid var(--line); border-radius:8px; background:#fff; color:inherit; font:inherit; resize:vertical; }
+    button { padding:10px 18px; border:0; border-radius:8px; background:var(--teal); color:#fff; font:inherit; font-weight:600; cursor:pointer; }
+    button:hover { background:#075c65; }
+    button.ghost { background:#fff; color:var(--ink); border:1.5px solid var(--line); }
+    button.ghost:hover { background:#e6eef0; }
+    button:disabled { opacity:.5; cursor:default; }
+    :focus-visible { outline:3px solid var(--teal); outline-offset:2px; }
+    .row { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0; }
+
+    /* Kết quả chấm điểm */
+    #result { margin-top:24px; }
+    .total { display:flex; flex-wrap:wrap; align-items:baseline; gap:6px 16px; }
+    .num { font-size:4rem; font-weight:800; line-height:1; }
+    .level { font-size:1.2rem; font-weight:800; }
+    .crit { margin:16px 0; }
+    .crit-head { display:flex; justify-content:space-between; gap:12px; font-weight:600; }
+    .bar { height:10px; margin:4px 0; border-radius:5px; background:var(--line); overflow:hidden; }
+    .bar i { display:block; height:100%; }
+    .note { margin:0; font-size:.95rem; }
+
+    /* Trò chơi và danh sách */
+    .q { margin:8px 0 16px; font-size:1.15rem; }
+    #fb { margin:12px 0; font-weight:600; }
+    ol.gold { padding-left:22px; }
+    ol.gold li { margin:12px 0; }
+    ol.gold b { display:block; }
+  </style>
+</head>
+<body>
+  <!-- HTML: phần nội dung của trang -->
+  <main>
+    <h1>Soi tin</h1>
+    <p class="lead">Kiểm tra tin đồn, đường link và tin nhắn trước khi bạn bấm chia sẻ.</p>
+
+    <h2>Kiểm tra một tin</h2>
+    <p>Dán đoạn tin hoặc đường link vào ô bên dưới. Điểm càng cao thì tin càng có nhiều dấu hiệu đáng tin.</p>
+    <textarea id="input" placeholder="Dán nội dung tin nhắn, bài đăng hoặc link…"></textarea>
+    <div class="row">
+      <button id="scan">Chấm điểm tin này</button>
+      <button class="ghost" id="clear">Xóa</button>
+    </div>
+    <p class="small">Thử nhanh với tin mẫu:</p>
+    <div class="row" id="samples"></div>
+    <div id="result" aria-live="polite"></div>
+    <p class="small">Điểm chỉ là gợi ý do chương trình chấm theo các luật có sẵn, không phải kết luận tin thật hay giả. Hãy luôn tự kiểm tra lại.</p>
+
+    <h2>Trò chơi: tin nào đáng ngờ?</h2>
+    <div id="game"></div>
+
+    <h2>5 câu hỏi trước khi chia sẻ</h2>
+    <ol class="gold">
+      <li><b>Ai đăng tin này?</b>Một cơ quan hoặc tờ báo có tên tuổi, hay một tài khoản ẩn danh?</li>
+      <li><b>Tin từ đâu ra?</b>Có đường link gốc, hay chỉ là “nghe nói”, “bạn tôi bảo”?</li>
+      <li><b>Bằng chứng ở đâu?</b>Có ảnh, video, số liệu, văn bản cụ thể, hay chỉ có những lời gây sốc?</li>
+      <li><b>Nguồn khác có đưa tin không?</b>Thử tìm cùng nội dung trên Google và các báo chính thống.</li>
+      <li><b>Nếu tin sai mà mình chia sẻ, ai bị ảnh hưởng?</b>Dừng lại vài giây rồi hãy quyết định.</li>
+    </ol>
+  </main>
+
+  <script>
+    // JavaScript: phần giúp trang biết "làm việc"
+    function el(tag, cls, text) {
+      const e = document.createElement(tag);
+      if (cls) e.className = cls;
+      if (text) e.textContent = text;
+      return e;
+    }
+    const tone = r => (r >= 0.7 ? "var(--ok)" : r >= 0.4 ? "var(--warn)" : "var(--bad)");
+
+    // ===== 1. Chấm điểm tin theo 8 tiêu chí =====
+    const TRUSTED = ["vnexpress.net", "tuoitre.vn", "thanhnien.vn", "vtv.vn", "vov.vn", "dantri.com.vn", "nhandan.vn", "baochinhphu.vn", "vietnamnet.vn"];
+    const SOCIAL = ["facebook.com", "fb.com", "tiktok.com", "zalo.me", "youtube.com", "youtu.be", "instagram.com", "t.me"];
+    const SHORT = ["bit.ly", "tinyurl.com", "s.id", "cutt.ly", "rb.gy", "t.ly"];
+    const BADTLD = [".xyz", ".top", ".click", ".icu", ".tk", ".gq", ".ml", ".cf", ".buzz"];
+    const BRANDS = ["vnexpress", "tuoitre", "thanhnien", "dantri", "nhandan"];
+    const OFFICIAL = ["ubnd", "sở giáo dục", "phòng giáo dục", "bộ giáo dục", "công an", "ban giám hiệu", "nhà trường", "công văn", "thông báo số"];
+    const ANON = ["nghe nói", "nghe đồn", "bạn tôi", "người nhà", "nguồn tin", "ẩn danh", "một người"];
+    const SENS = ["sốc", "khẩn cấp", "chấn động", "kinh hoàng", "không thể tin", "rùng mình"];
+    const EVID = ["theo báo cáo", "số liệu", "công văn", "thông báo số", "nguồn:", "biên bản", "quyết định số"];
+    const PUSH = ["chia sẻ ngay", "share ngay", "gửi cho tất cả", "lan truyền", "cảnh báo mọi người", "cực kỳ nguy hiểm"];
+    const LURE = ["trúng thưởng", "nhận quà", "skin", "kim cương", "miễn phí", "otp", "mật khẩu", "xác minh tài khoản", "đăng nhập"];
+
+    const isTrusted = h => TRUSTED.some(d => h === d || h.endsWith("." + d)) || h.endsWith(".gov.vn") || h.endsWith(".edu.vn");
+    const isFake = h => BRANDS.some(b => h.includes(b)) && !isTrusted(h);
+    const isSocial = h => SOCIAL.some(d => h === d || h.endsWith("." + d));
+
+    function analyze(text) {
+      const t = text.toLowerCase();
+      const plain = t.replace(/https?:\/\/[^\s]+/g, ""); // nội dung không tính link
+      const urls = text.match(/https?:\/\/[^\s]+/gi) || [];
+      const hosts = [];
+      urls.forEach(u => { try { hosts.push(new URL(u).hostname.replace(/^www\./, "")); } catch (e) {} });
+      const has = list => list.filter(w => t.includes(w));
+      const c = [];
+      const add = (name, max, score, note) => c.push({ name, max, score, note });
+
+      // 1. Nguồn đăng tin (20 điểm)
+      if (hosts.some(isFake)) add("Nguồn đăng tin", 20, 0, "Tên miền giống trang báo uy tín nhưng không phải trang thật.");
+      else if (hosts.some(isTrusted)) add("Nguồn đăng tin", 20, 20, "Link thuộc trang báo hoặc cơ quan có tên miền uy tín.");
+      else if (hosts.some(isSocial)) add("Nguồn đăng tin", 20, 8, "Tin đăng trên mạng xã hội, cần tìm nguồn gốc.");
+      else if (hosts.length) add("Nguồn đăng tin", 20, 5, "Tên miền lạ, chưa rõ ai đứng sau.");
+      else add("Nguồn đăng tin", 20, 4, "Không có link nguồn.");
+
+      // 2. Tác giả / cơ quan phát hành (15 điểm)
+      if (has(ANON).length) add("Tác giả, cơ quan phát hành", 15, 2, "Dựa vào lời kể ẩn danh như “nghe nói”, “bạn tôi”.");
+      else if (has(OFFICIAL).length) add("Tác giả, cơ quan phát hành", 15, 15, "Có nêu rõ cơ quan phát hành.");
+      else add("Tác giả, cơ quan phát hành", 15, 7, "Không nêu rõ ai là tác giả.");
+
+      // 3. Thời gian đăng tải (10 điểm)
+      const hasDate = /\b\d{1,2}[\/.-]\d{1,2}([\/.-]\d{2,4})?\b/.test(t) || /ngày \d{1,2}/.test(t);
+      const urgent = has(["ngay lập tức", "hôm nay", "khẩn", "gấp", "ngay bây giờ"]).length > 0;
+      if (hasDate) add("Thời gian đăng tải", 10, 10, "Có ghi rõ ngày tháng.");
+      else if (urgent) add("Thời gian đăng tải", 10, 3, "Giục gấp nhưng không ghi ngày giờ cụ thể.");
+      else add("Thời gian đăng tải", 10, 5, "Không ghi thời gian đăng.");
+
+      // 4. Giọng văn giật gân (10 điểm)
+      const letters = text.match(/\p{L}/gu) || [];
+      const upper = text.match(/\p{Lu}/gu) || [];
+      const caps = letters.length > 20 && upper.length / letters.length > 0.4;
+      const excl = (text.match(/!/g) || []).length;
+      const pen = has(SENS).length * 3 + Math.min(excl, 3) + (caps ? 3 : 0);
+      add("Giọng văn giật gân", 10, Math.max(0, 10 - pen), pen ? "Có từ gây sốc, dấu chấm than hoặc viết hoa nhiều." : "Giọng văn bình tĩnh.");
+
+      // 5. Bằng chứng, số liệu (15 điểm)
+      const ev = has(EVID).length + (/\d+\/[a-zđ-]+/.test(t) ? 1 : 0) + (urls.length ? 1 : 0);
+      add("Bằng chứng, số liệu", 15, Math.min(15, 3 + ev * 4), ev ? "Có nhắc đến văn bản, số liệu hoặc link kèm theo." : "Không có bằng chứng cụ thể.");
+
+      // 6. Đối chiếu nguồn độc lập (15 điểm)
+      const named = ["vtv", "tuổi trẻ", "thanh niên", "vnexpress", "dân trí", "báo nhân dân"].filter(w => plain.includes(w)).length;
+      const many = new Set(hosts.filter(isTrusted)).size + named;
+      if (many >= 2) add("Đối chiếu nguồn khác", 15, 15, "Có từ hai nguồn uy tín trở lên cùng nhắc đến.");
+      else if (many === 1) add("Đối chiếu nguồn khác", 15, 9, "Mới có một nguồn, hãy tìm thêm nguồn khác.");
+      else add("Đối chiếu nguồn khác", 15, 2, "Chưa thấy nguồn độc lập nào xác nhận.");
+
+      // 7. Lời thúc giục, kích động (5 điểm)
+      const p = has(PUSH).length;
+      add("Lời thúc giục, kích động", 5, Math.max(0, 5 - p * 3), p ? "Có lời thúc giục chia sẻ ngay." : "Không thấy lời thúc giục.");
+
+      // 8. Dấu hiệu bất thường của link (10 điểm)
+      let bad = has(LURE).length * 3;
+      hosts.forEach(h => {
+        if (SHORT.includes(h)) bad += 4;
+        if (BADTLD.some(x => h.endsWith(x))) bad += 4;
+        if (/^\d+(\.\d+){3}$/.test(h)) bad += 4;
+        if ((h.match(/-/g) || []).length >= 2) bad += 2;
+      });
+      add("Dấu hiệu bất thường của link", 10, Math.max(0, 10 - bad), bad ? "Có dấu hiệu dụ dỗ hoặc link đáng ngờ." : "Không thấy dấu hiệu bất thường.");
+      return c;
+    }
+
+    function showResult(c) {
+      const total = c.reduce((a, x) => a + x.score, 0);
+      let label = "Rất đáng ngờ, đừng chia sẻ";
+      if (total >= 75) label = "Khá đáng tin, nhưng vẫn nên đối chiếu thêm";
+      else if (total >= 50) label = "Cần kiểm chứng thêm trước khi chia sẻ";
+      const box = document.getElementById("result");
+      box.innerHTML = "";
+      const head = el("div", "total");
+      const num = el("span", "num", total + "/100");
+      num.style.color = tone(total / 100);
+      head.append(num, el("span", "level", label));
+      box.appendChild(head);
+      c.forEach(x => {
+        const row = el("div", "crit");
+        const top = el("div", "crit-head");
+        top.append(el("span", "", x.name), el("span", "", x.score + "/" + x.max));
+        const bar = el("div", "bar");
+        const fill = document.createElement("i");
+        fill.style.width = (x.score / x.max * 100) + "%";
+        fill.style.background = tone(x.score / x.max);
+        bar.appendChild(fill);
+        row.append(top, bar, el("p", "note", x.note));
+        box.appendChild(row);
+      });
+    }
+
+    const input = document.getElementById("input");
+    const result = document.getElementById("result");
+    function run() {
+      const v = input.value.trim();
+      if (!v) { result.textContent = "Hãy dán nội dung tin hoặc đường link vào ô phía trên trước."; return; }
+      showResult(analyze(v));
+    }
+    document.getElementById("scan").onclick = run;
+    document.getElementById("clear").onclick = () => { input.value = ""; result.innerHTML = ""; };
+
+    // Các tin mẫu để thử nhanh
+    const SAMPLES = [
+      ["Tin đồn nghỉ học", "KHẨN!!! Nghe nói ngày mai cả trường được nghỉ vì bão, bạn tôi là người nhà thầy hiệu phó vừa báo. Chia sẻ ngay cho tất cả các lớp để mọi người biết!"],
+      ["Lừa nhận quà game", "Trúng thưởng! Nhận skin và kim cương miễn phí, bấm link http://skin-mien-phi.top/nhan-qua rồi đăng nhập tài khoản và nhập mã OTP để nhận quà."],
+      ["Thông báo của trường", "Ban giám hiệu nhà trường thông báo số 12/TB-THCS ngày 18/10/2026: học sinh nghỉ học ngày 24/10 để tổng vệ sinh trường. Xem tại http://thcsvidu.edu.vn/thong-bao"],
+      ["Link báo giả mạo", "Chấn động: bão số 99 sắp đổ bộ, xem ngay tại http://vnexpress-24h.top/khan-cap"]
+    ];
+    SAMPLES.forEach(([label, text]) => {
+      const b = el("button", "ghost", label);
+      b.onclick = () => { input.value = text; run(); };
+      document.getElementById("samples").appendChild(b);
+    });
+
+    // ===== 2. Trò chơi 5 tình huống =====
+    // Mỗi tình huống: [nội dung, có đáng tin không (true/false), lời giải thích]
+    const SCEN = [
+      ["Nhóm Zalo lớp gửi: “Nghe nói mai nghỉ học vì bão, share ngay!” Không có link hay thông báo nào kèm theo.", false, "Chỉ là lời đồn, không có nguồn. Hãy hỏi giáo viên hoặc xem trang chính thức của trường."],
+      ["Trang web của trường đăng thông báo lịch thi học kỳ, có số văn bản, ngày tháng và tên người ký.", true, "Có cơ quan phát hành, số văn bản và ngày tháng rõ ràng. Nếu cần chắc chắn, vẫn có thể hỏi lại giáo viên chủ nhiệm."],
+      ["Tin nhắn: “Nhận 5000 kim cương miễn phí, bấm link và nhập mật khẩu tài khoản game.”", false, "Đây là chiêu lừa lấy tài khoản. Không bao giờ nhập mật khẩu hay mã OTP vào link lạ."],
+      ["Một báo điện tử chính thống đưa tin về lịch thi, trích dẫn thông báo của Bộ Giáo dục và ghi rõ ngày đăng.", true, "Báo chính thống có trích dẫn cơ quan chức năng và ngày đăng là dấu hiệu đáng tin."],
+      ["Ảnh một đám cháy kèm chữ “SỐC”, không ghi địa điểm hay thời gian, do một tài khoản ẩn danh đăng.", false, "Thiếu địa điểm, thời gian và người đăng ẩn danh. Ảnh có thể cũ hoặc của nơi khác, hãy thử tìm kiếm ảnh ngược để kiểm tra."]
+    ];
+    let qi = 0, score = 0;
+    const game = document.getElementById("game");
+
+    function showQ() {
+      game.innerHTML = "";
+      if (qi >= SCEN.length) {
+        const title = score >= 80 ? "Chiến binh chống tin giả" : score >= 40 ? "Thám tử tập sự" : "Cần luyện thêm";
+        game.appendChild(el("p", "q", "Bạn được " + score + "/100 điểm. Danh hiệu: " + title + "."));
+        const again = el("button", "", "Chơi lại");
+        again.onclick = () => { qi = 0; score = 0; showQ(); };
+        game.appendChild(again);
+        return;
+      }
+      const [text, real, why] = SCEN[qi];
+      game.append(el("p", "small", "Tình huống " + (qi + 1) + "/" + SCEN.length), el("p", "q", text));
+      const row = el("div", "row");
+      const fb = el("p", "", "");
+      fb.id = "fb";
+      [["Đáng tin", true], ["Đáng ngờ", false]].forEach(([label, val]) => {
+        const b = el("button", "ghost", label);
+        b.onclick = () => {
+          row.querySelectorAll("button").forEach(x => { x.disabled = true; });
+          const right = val === real;
+          if (right) score += 20;
+          fb.textContent = (right ? "Đúng rồi! " : "Chưa đúng. ") + why;
+          const next = el("button", "", qi === SCEN.length - 1 ? "Xem kết quả" : "Tình huống tiếp theo");
+          next.onclick = () => { qi++; showQ(); };
+          game.appendChild(next);
+        };
+        row.appendChild(b);
+      });
+      game.append(row, fb);
+    }
+    showQ();
+  </script>
+</body>
+</html>
